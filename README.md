@@ -1,182 +1,228 @@
 # LocalMeetingTranscriber
 
-LocalMeetingTranscriber is an interactive CLI that turns iPhone `.m4a` recordings into Word `.docx` meeting transcripts. It converts audio to 16kHz mono WAV via `ffmpeg`, transcribes with `whisper.cpp` (large-v3 Q5_0), optionally polishes text with a local Ollama model, and exports clean Word documents.
+> 也有[繁體中文版說明](README.zh-TW.md)
+
+A local, privacy-first desktop app that turns `.m4a` meeting recordings into polished Word (`.docx`) transcripts — entirely on your own machine, with no cloud uploads.
+
+Built with Python + PySide6. Transcription via [whisper.cpp](https://github.com/ggerganov/whisper.cpp); optional AI polishing via [Ollama](https://ollama.ai).
+
+---
 
 ## Features
-- Interactive multi-select of `.m4a` files in `input_audio/`
-- Four output modes:
+
+- **Native macOS GUI** with scrollable, bilingual (English / 繁體中文) interface
+- **First-launch setup wizard** — guides you through configuring whisper.cpp, downloading a model, and checking Ollama
+- **Four output modes**:
   1. Full transcript with timestamps
   2. Clean transcript without timestamps
-  3. Polished transcript (Ollama)
-  4. Polished transcript with appendix (raw transcript)
-- Exports `.docx` files to `output_docx/`
-- UTF-8 and Chinese text support
+  3. Polished transcript (Ollama LLM)
+  4. Polished transcript + raw appendix (Ollama LLM)
+- **Traditional Chinese output** — whisper output is automatically converted from Simplified → Traditional Chinese (Taiwan) via OpenCC
+- Batch processing — add multiple `.m4a` files at once with editable titles and dates
+- Exports clean `.docx` files ready to share
+- Settings persist across sessions (`config.json`)
+- Also available as a CLI (`lmt`)
+
+---
 
 ## Requirements
-- Python 3.11
-- `ffmpeg`
-- `whisper.cpp` built locally
-- `ollama` (only required for modes 3 and 4)
 
-Python dependencies:
-- `python-docx`
-- `pytest` (for tests)
+| Dependency | Purpose | Install |
+|---|---|---|
+| Python 3.11+ | Runtime | [python.org](https://www.python.org) |
+| ffmpeg | Audio conversion | `brew install ffmpeg` |
+| whisper.cpp | Speech-to-text | `brew install whisper-cpp` |
+| Ollama | LLM polishing (modes 3 & 4 only) | [ollama.ai](https://ollama.ai) |
 
-Install Python deps:
+> **Note:** The app requires the **whisper.cpp** binary (`whisper-cli`), not the Python `openai-whisper` package. The setup wizard will detect and warn you if the wrong binary is configured.
+
+---
+
+## Quick Start
+
+### 1. Install Python dependencies
 
 ```bash
+git clone https://github.com/trnet4334/LocalMeetingTranscriber.git
+cd LocalMeetingTranscriber
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Setup: ffmpeg
-Install ffmpeg using your preferred method.
-
-Examples:
+### 2. Install system dependencies
 
 ```bash
 # macOS (Homebrew)
-brew install ffmpeg
+brew install ffmpeg whisper-cpp
 
-# Ubuntu/Debian
-sudo apt-get install ffmpeg
-```
-
-## Setup: whisper.cpp
-1. Clone and build whisper.cpp:
-
-```bash
-git clone https://github.com/ggerganov/whisper.cpp
-cd whisper.cpp
-make
-```
-
-2. Download the large-v3 Q5_0 model:
-
-```bash
-# Example from whisper.cpp model tooling
-# (Choose a trusted mirror or the official whisper.cpp model scripts)
-```
-
-3. Update `config.json` or use CLI flags to point to:
-- `whisper_cpp_path`: `./whisper.cpp/main` (or absolute path)
-- `whisper_model_path`: `./models/ggml-large-v3-q5_0.bin`
-
-## Setup: Ollama (Optional)
-Modes 3 and 4 require Ollama and the model `qwen2.5:7b-instruct-q4_K_M`.
-
-```bash
+# Pull an Ollama model (only needed for modes 3 & 4)
 ollama pull qwen2.5:7b-instruct-q4_K_M
 ```
 
-## Folder Structure
+### 3. Launch the GUI
+
+```bash
+python -m localmeetingtranscriber.gui.app
+```
+
+Or install as a command and run:
+
+```bash
+pip install -e ".[gui]"
+lmt-gui
+```
+
+On first launch, the **Setup Wizard** will appear automatically to help you:
+- Locate the `whisper-cli` binary
+- Download a Whisper model (default: Small, ~466 MB)
+- Check if Ollama is running
+
+---
+
+## Whisper Models
+
+The wizard lets you choose from five models. Larger models are slower but more accurate:
+
+| Model | Size | Accuracy | Recommended for |
+|---|---|---|---|
+| Tiny | ~75 MB | Basic | Quick drafts |
+| Base | ~142 MB | Decent | Short meetings |
+| **Small** | **~466 MB** | **Good** | **Default — good balance** |
+| Medium | ~1.5 GB | Better | Longer meetings |
+| Large-v3 Q5 | ~1.1 GB | Best | High-accuracy needs |
+
+You can also install whisper-cpp via Homebrew and use the bundled `whisper-cli` binary directly:
+
+```bash
+brew install whisper-cpp
+# Binary location: /usr/local/bin/whisper-cli
+```
+
+---
+
+## GUI Overview
 
 ```
-LocalMeetingTranscriber/
-  localmeetingtranscriber/
-  input_audio/           # Put .m4a files here
-  output_docx/           # Generated .docx files
-  config.json
-  requirements.txt
-  README.md
+┌─────────────────────────────────────────────┐  Language: [English ▼]
+│  Input Files                                │
+│  ┌─────────────────────────────────────┐   │
+│  │  meeting_2026-03-01.m4a             │   │
+│  └─────────────────────────────────────┘   │
+│  [Add Files…]  [Remove Selected]           │
+│                                            │
+│  Output                                    │
+│  Mode:          [1. Full transcript… ▼]    │
+│  Output Folder: /Users/…/Downloads [Browse]│
+│                                            │
+│  Dependencies                              │
+│  ffmpeg:        ffmpeg                     │
+│  whisper binary:/usr/local/bin/whisper-cli │
+│  Whisper model: …/models/ggml-small.bin    │
+│  Ollama model:  qwen2.5:7b-instruct-q4_K_M│
+│                                            │
+│  Meeting Metadata (editable)               │
+│  ┌──────────┬────────────────┬──────────┐  │
+│  │ File     │ Title          │ Date     │  │
+│  └──────────┴────────────────┴──────────┘  │
+│                                            │
+│                [Start Processing] [Cancel] │
+│  Progress ─────────────────────────────── │
+│  Log ──────────────────────────────────── │
+└────────────────────────────────────────────┘
 ```
+
+---
 
 ## CLI Usage
 
-Run the CLI:
+A text-based CLI is also available for headless/server use:
 
 ```bash
+# Run interactively
 python -m localmeetingtranscriber.main
-```
 
-Install as a CLI and run via `lmt`:
-
-```bash
-pip install -e .
+# Or via the installed command
 lmt
 ```
 
-Optional overrides:
+The CLI will prompt for file selection, output mode, title, and date.
 
-```bash
-python -m localmeetingtranscriber.main \
-  --config ./config.json \
-  --ffmpeg-path /usr/local/bin/ffmpeg \
-  --whisper-cpp-path /path/to/whisper.cpp/main \
-  --whisper-model-path /path/to/ggml-large-v3-q5_0.bin \
-  --ollama-model qwen2.5:7b-instruct-q4_K_M
-```
+---
 
-## Example Flows
-
-### Mode 1: Full transcript with timestamps
-```
-$ python -m localmeetingtranscriber.main
-Available .m4a files:
-1. team_sync.m4a
-2. customer_call.m4a
-Select files (comma-separated indices): 1
-
-Select output mode:
-1. Full transcript with timestamps
-2. Clean transcript without timestamps
-3. Polished transcript (Ollama)
-4. Polished transcript + appendix (raw transcript)
-Enter choice (1-4): 1
-Meeting title [team_sync]: Weekly Team Sync
-Meeting date [2026-02-24]: 2026-02-25
-- Converting to WAV...
-- Transcribing with whisper.cpp...
-- Post-processing transcript...
-- Exporting DOCX to output_docx/Weekly Team Sync.docx...
-- Done.
-```
-
-### Mode 2: Clean transcript
-```
-Select files (comma-separated indices): 1,2
-Enter choice (1-4): 2
-Meeting title [team_sync]:
-Meeting date [2026-02-24]:
-...
-```
-
-### Mode 3: Polished transcript (Ollama)
-```
-Select files (comma-separated indices): 2
-Enter choice (1-4): 3
-- Polishing transcript with Ollama...
-```
-
-### Mode 4: Polished + appendix
-```
-Select files (comma-separated indices): 1
-Enter choice (1-4): 4
-- Polishing transcript with Ollama...
-- Exporting DOCX to output_docx/Weekly Team Sync.docx...
-```
-
-## Sample Output Snippet (DOCX Content)
+## Project Structure
 
 ```
-Weekly Team Sync
-Date: 2026-02-25
-
-[00:00:03] Today we will review the project status and next steps.
-[00:00:12] The frontend is complete; backend integration is in progress.
-
-Appendix: Raw Transcript
-[00:00:03] Today we will review the project status and next steps.
-[00:00:12] The frontend is complete; backend integration is in progress.
+LocalMeetingTranscriber/
+├── localmeetingtranscriber/
+│   ├── gui/
+│   │   ├── app.py           # Entry point — setup wizard + MainWindow
+│   │   ├── main_window.py   # Main GUI window
+│   │   ├── worker.py        # QThread pipeline worker
+│   │   ├── setup_wizard.py  # First-launch wizard
+│   │   ├── downloader.py    # Model download thread
+│   │   └── i18n.py          # EN / 繁體中文 translations
+│   ├── pipeline.py          # Shared pipeline (CLI + GUI)
+│   ├── transcriber.py       # whisper.cpp wrapper + backend detection
+│   ├── converter.py         # ffmpeg WAV conversion
+│   ├── postprocess.py       # SRT parsing
+│   ├── exporter.py          # DOCX export
+│   ├── llm_polisher.py      # Ollama integration
+│   ├── config.py            # Config load/save
+│   └── main.py              # CLI entry point
+├── models/                  # Downloaded Whisper model files
+├── tests/
+├── config.json
+├── requirements.txt
+├── pyproject.toml
+└── README.md
 ```
 
-## Tips
-- Use short filenames; they become default meeting titles.
-- Keep a consistent naming format to organize outputs.
-- If Ollama isn’t installed, use mode 1 or 2.
-- For best results, record in quiet environments.
+---
+
+## Configuration (`config.json`)
+
+```json
+{
+  "ffmpeg_path": "ffmpeg",
+  "whisper_cpp_path": "/usr/local/bin/whisper-cli",
+  "whisper_model_path": "./models/ggml-small.bin",
+  "ollama_model": "qwen2.5:7b-instruct-q4_K_M",
+  "output_dir": "./output_docx",
+  "last_mode": 1,
+  "language": "en"
+}
+```
+
+All fields are editable in the GUI's Dependencies / Output sections and are saved automatically on exit.
+
+---
 
 ## Troubleshooting
-- **ffmpeg not found**: Install ffmpeg or set `ffmpeg_path` in `config.json`.
-- **whisper.cpp not found**: Build whisper.cpp and update `whisper_cpp_path`.
-- **model not found**: Download `ggml-large-v3-q5_0.bin` and update `whisper_model_path`.
-- **Ollama errors**: Install Ollama and pull `qwen2.5:7b-instruct-q4_K_M`.
+
+| Symptom | Fix |
+|---|---|
+| `ffmpeg not found` | `brew install ffmpeg` or set `ffmpeg_path` in config |
+| Setup wizard shows "openai-whisper" warning | Install whisper.cpp: `brew install whisper-cpp` |
+| `whisper-cli` binary not found | Set path to `/usr/local/bin/whisper-cli` in GUI or config |
+| Model file not found | Re-run wizard or set `whisper_model_path` in config |
+| Output is Simplified Chinese | Update to latest version — OpenCC conversion is applied automatically |
+| Ollama errors | `ollama serve` then `ollama pull qwen2.5:7b-instruct-q4_K_M` |
+| Chinese misidentified as Japanese | Fixed in latest version — `-l zh` flag is always passed |
+
+---
+
+## Running Tests
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+55 tests covering pipeline logic, GUI widgets, setup wizard, and the model downloader.
+
+---
+
+## License
+
+MIT
