@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QComboBox,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -53,9 +54,10 @@ class MainWindow(QMainWindow):
         self._worker: PipelineWorker | None = None
 
         self.setWindowTitle("LocalMeetingTranscriber")
-        self.setMinimumSize(760, 700)
+        self.setMinimumSize(820, 920)
         self._build_ui()
         self._connect_signals()
+        self.setStyleSheet("QLineEdit { padding: 3px 6px; }")
         self._update_start_button()
 
     # ------------------------------------------------------------------
@@ -63,18 +65,26 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
-        root = QWidget()
-        self.setCentralWidget(root)
-        layout = QVBoxLayout(root)
-        layout.setSpacing(10)
-        layout.setContentsMargins(12, 12, 12, 12)
+        # Scrollable content widget
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(14)
+        layout.setContentsMargins(16, 16, 16, 16)
 
         layout.addWidget(self._build_file_group())
-        layout.addWidget(self._build_settings_group())
+        layout.addWidget(self._build_output_group())
+        layout.addWidget(self._build_dependencies_group())
         layout.addWidget(self._build_metadata_group())
         layout.addLayout(self._build_action_bar())
         layout.addWidget(self._build_progress_group())
-        layout.addWidget(self._build_log_group(), stretch=1)
+        layout.addWidget(self._build_log_group())
+        layout.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setWidget(content)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setCentralWidget(scroll)
 
     def _build_file_group(self) -> QGroupBox:
         group = QGroupBox("Input Files")
@@ -93,26 +103,90 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
         return group
 
-    def _build_settings_group(self) -> QGroupBox:
-        group = QGroupBox("Settings")
-        form = QFormLayout(group)
+    @staticmethod
+    def _make_form(group: QGroupBox) -> QVBoxLayout:
+        """VBox-based form layout with guaranteed row spacing."""
+        vbox = QVBoxLayout(group)
+        vbox.setSpacing(0)
+        vbox.setContentsMargins(14, 16, 14, 16)
+        return vbox
+
+    @staticmethod
+    def _form_row(label_text: str, field_widget) -> QWidget:
+        """Wrap a label + field pair in a QWidget with 5 px top padding."""
+        container = QWidget()
+        container.setContentsMargins(0, 12, 0, 0)
+        hbox = QHBoxLayout(container)
+        hbox.setContentsMargins(0, 0, 0, 0)
+        hbox.setSpacing(12)
+        lbl = QLabel(label_text)
+        lbl.setFixedWidth(150)
+        hbox.addWidget(lbl)
+        if isinstance(field_widget, QHBoxLayout):
+            hbox.addLayout(field_widget, stretch=1)
+        else:
+            hbox.addWidget(field_widget, stretch=1)
+        return container
+
+    @staticmethod
+    def _browse_row(edit: QLineEdit, btn: QPushButton) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(edit, stretch=1)
+        row.addWidget(btn)
+        return row
+
+    def _build_output_group(self) -> QGroupBox:
+        group = QGroupBox("Output")
+        vbox = self._make_form(group)
 
         self._mode_combo = QComboBox()
+        self._mode_combo.setFixedHeight(34)
         for label in _MODES:
             self._mode_combo.addItem(label)
         last_mode = int(self._config.get("last_mode", 1))
         self._mode_combo.setCurrentIndex(max(0, last_mode - 1))
-        form.addRow("Output Mode:", self._mode_combo)
+        vbox.addWidget(self._form_row("Mode:", self._mode_combo))
 
-        folder_row = QHBoxLayout()
-        default_out = str(
-            (PROJECT_ROOT / self._config.get("output_dir", "output_docx")).resolve()
-        )
+        default_out = self._config.get("output_dir", "")
+        if not default_out or not Path(default_out).is_absolute():
+            default_out = str((PROJECT_ROOT / "output_docx").resolve())
         self._output_dir_edit = QLineEdit(default_out)
+        self._output_dir_edit.setFixedHeight(34)
         self._btn_browse = QPushButton("Browse…")
-        folder_row.addWidget(self._output_dir_edit, stretch=1)
-        folder_row.addWidget(self._btn_browse)
-        form.addRow("Output Folder:", folder_row)
+        self._btn_browse.setFixedHeight(34)
+        vbox.addWidget(self._form_row("Output Folder:", self._browse_row(self._output_dir_edit, self._btn_browse)))
+
+        vbox.addStretch()
+        return group
+
+    def _build_dependencies_group(self) -> QGroupBox:
+        group = QGroupBox("Dependencies")
+        vbox = self._make_form(group)
+
+        self._ffmpeg_path_edit = QLineEdit(self._config.get("ffmpeg_path", "ffmpeg"))
+        self._ffmpeg_path_edit.setFixedHeight(34)
+        vbox.addWidget(self._form_row("ffmpeg:", self._ffmpeg_path_edit))
+
+        self._whisper_bin_edit = QLineEdit(self._config.get("whisper_cpp_path", ""))
+        self._whisper_bin_edit.setFixedHeight(34)
+        self._whisper_bin_edit.setPlaceholderText("/path/to/whisper.cpp/main")
+        self._btn_browse_whisper_bin = QPushButton("Browse…")
+        self._btn_browse_whisper_bin.setFixedHeight(34)
+        vbox.addWidget(self._form_row("whisper.cpp binary:", self._browse_row(self._whisper_bin_edit, self._btn_browse_whisper_bin)))
+
+        self._whisper_model_edit = QLineEdit(self._config.get("whisper_model_path", ""))
+        self._whisper_model_edit.setFixedHeight(34)
+        self._whisper_model_edit.setPlaceholderText("/path/to/ggml-large-v3-q5_0.bin")
+        self._btn_browse_whisper_model = QPushButton("Browse…")
+        self._btn_browse_whisper_model.setFixedHeight(34)
+        vbox.addWidget(self._form_row("Whisper model:", self._browse_row(self._whisper_model_edit, self._btn_browse_whisper_model)))
+
+        self._ollama_model_edit = QLineEdit(self._config.get("ollama_model", ""))
+        self._ollama_model_edit.setFixedHeight(34)
+        self._ollama_model_edit.setPlaceholderText("qwen2.5:7b-instruct-q4_K_M")
+        vbox.addWidget(self._form_row("Ollama model:", self._ollama_model_edit))
+
         return group
 
     def _build_metadata_group(self) -> QGroupBox:
@@ -174,6 +248,8 @@ class MainWindow(QMainWindow):
         self._btn_add.clicked.connect(self._on_add_files_clicked)
         self._btn_remove.clicked.connect(self._on_remove_selected)
         self._btn_browse.clicked.connect(self._on_browse_output)
+        self._btn_browse_whisper_bin.clicked.connect(self._on_browse_whisper_bin)
+        self._btn_browse_whisper_model.clicked.connect(self._on_browse_whisper_model)
         self._btn_start.clicked.connect(self._on_start)
         self._btn_cancel.clicked.connect(self._on_cancel)
 
@@ -236,6 +312,23 @@ class MainWindow(QMainWindow):
         if directory:
             self._output_dir_edit.setText(directory)
 
+    def _on_browse_whisper_bin(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select whisper.cpp Binary", self._whisper_bin_edit.text() or str(Path.home())
+        )
+        if path:
+            self._whisper_bin_edit.setText(path)
+
+    def _on_browse_whisper_model(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select whisper.cpp Model (.bin)",
+            self._whisper_model_edit.text() or str(Path.home()),
+            "Model Files (*.bin);;All Files (*)",
+        )
+        if path:
+            self._whisper_model_edit.setText(path)
+
     def _update_start_button(self) -> None:
         self._btn_start.setEnabled(self._file_list.count() > 0)
 
@@ -243,12 +336,25 @@ class MainWindow(QMainWindow):
     # Pipeline start / cancel
     # ------------------------------------------------------------------
 
+    def _build_current_config(self) -> dict:
+        """Build a config dict from the current GUI field values."""
+        return {
+            **self._config,
+            "ffmpeg_path": self._ffmpeg_path_edit.text().strip() or "ffmpeg",
+            "whisper_cpp_path": self._whisper_bin_edit.text().strip(),
+            "whisper_model_path": self._whisper_model_edit.text().strip(),
+            "ollama_model": self._ollama_model_edit.text().strip(),
+            "output_dir": self._output_dir_edit.text(),
+            "last_mode": self._mode_combo.currentIndex() + 1,
+        }
+
     def _on_start(self) -> None:
         mode = self._mode_combo.currentIndex() + 1
         output_dir = Path(self._output_dir_edit.text())
+        config = self._build_current_config()
 
         try:
-            validate_dependencies(self._config, mode)
+            validate_dependencies(config, mode)
         except RuntimeError as exc:
             QMessageBox.critical(self, "Dependency Error", str(exc))
             return
@@ -265,7 +371,7 @@ class MainWindow(QMainWindow):
                     title=title,
                     date=date,
                     mode=mode,
-                    config=self._config,
+                    config=config,
                     output_dir=output_dir,
                 )
             )
@@ -356,11 +462,7 @@ class MainWindow(QMainWindow):
             self._worker.cancel()
             self._worker.wait(3000)
 
-        updated = {
-            **self._config,
-            "last_mode": self._mode_combo.currentIndex() + 1,
-            "output_dir": self._output_dir_edit.text(),
-        }
+        updated = self._build_current_config()
         try:
             save_config(_CONFIG_PATH, updated)
         except OSError:
