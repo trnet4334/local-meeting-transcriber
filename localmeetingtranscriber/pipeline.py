@@ -103,6 +103,20 @@ class PipelineInput:
 # Pipeline execution
 # ---------------------------------------------------------------------------
 
+def _to_traditional(text: str) -> str:
+    """Convert Simplified Chinese → Traditional Chinese (Taiwan) via OpenCC.
+
+    Whisper outputs Simplified Chinese even for Traditional Chinese audio.
+    Uses the ``s2twp`` config which handles phrase-level conversions
+    (e.g. 软件→軟體, 内存→記憶體).  Silently skips if OpenCC is unavailable.
+    """
+    try:
+        import opencc  # opencc-python-reimplemented
+        return opencc.OpenCC("s2twp").convert(text)
+    except Exception:
+        return text
+
+
 def _build_polish_prompt(clean_lines: list[str]) -> str:
     return (
         "You are a professional meeting assistant. "
@@ -152,6 +166,7 @@ def run_pipeline(
 
         _emit("Post-processing transcript...")
         srt_text = srt_path.read_text(encoding="utf-8")
+        srt_text = _to_traditional(srt_text)
         raw_lines = srt_to_lines(srt_text)
         clean_lines = strip_timestamps(raw_lines)
 

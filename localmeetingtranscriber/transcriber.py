@@ -33,16 +33,31 @@ def detect_whisper_type(binary_path: str) -> WhisperBackend:
 
 
 def build_whisper_cmd(
-    whisper_cpp_path: str, model_path: str, wav_path: str, output_base: str
+    whisper_cpp_path: str,
+    model_path: str,
+    wav_path: str,
+    output_base: str,
+    language: str = "zh",
 ) -> list[str]:
-    """Build a whisper.cpp command to write <output_base>.srt."""
-    return [
+    """Build a whisper.cpp command to write <output_base>.srt.
+
+    Parameters
+    ----------
+    language:
+        BCP-47 language code passed via ``-l``.  Defaults to ``zh``
+        (Chinese) so whisper does not waste time on auto-detection.
+        Pass an empty string to let whisper auto-detect.
+    """
+    cmd = [
         whisper_cpp_path,
         "-m", model_path,
         "-f", wav_path,
         "--output-srt",
         "-of", output_base,
     ]
+    if language:
+        cmd += ["-l", language]
+    return cmd
 
 
 def transcribe_to_srt(
@@ -67,7 +82,8 @@ def transcribe_to_srt(
         )
 
     cmd = build_whisper_cmd(
-        whisper_cpp_path, str(model_path), str(wav_path), str(output_base)
+        whisper_cpp_path, str(model_path), str(wav_path), str(output_base),
+        language="zh",
     )
     subprocess.run(cmd, check=True, capture_output=True)
     return output_base.with_suffix(".srt")
