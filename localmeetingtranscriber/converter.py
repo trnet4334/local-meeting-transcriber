@@ -21,6 +21,10 @@ def build_ffmpeg_cmd(ffmpeg_path: str, input_path: str, output_path: str) -> lis
 
 
 def convert_to_wav(ffmpeg_path: str, input_path: Path, output_path: Path) -> None:
-    """Convert an audio file to 16kHz mono WAV."""
+    """Convert an audio file to 16kHz mono WAV.
+
+    Stderr is captured so that diagnostic output is available via
+    CalledProcessError.stderr on failure instead of polluting the terminal.
+    """
     cmd = build_ffmpeg_cmd(ffmpeg_path, str(input_path), str(output_path))
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, capture_output=True)
