@@ -4,10 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "localmeetingtranscriber"
-version = "0.1.0"
-description = "CLI to transcribe local meeting recordings"
+version = "0.2.0"
+description = "CLI and GUI to transcribe local meeting recordings into Word documents"
 requires-python = ">=3.11"
 dependencies = ["python-docx>=1.1.0"]
 
+[project.optional-dependencies]
+gui = ["PySide6>=6.6.0"]
+dev = ["pytest>=7.4.0", "pytest-qt>=4.2.0"]
+
 [project.scripts]
 lmt = "localmeetingtranscriber.main:main"
+lmt-gui = "localmeetingtranscriber.gui.app:main"

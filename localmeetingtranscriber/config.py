@@ -10,6 +10,8 @@ DEFAULTS: dict[str, Any] = {
     "whisper_cpp_path": "./whisper.cpp/main",
     "whisper_model_path": "./models/ggml-large-v3-q5_0.bin",
     "ollama_model": "qwen2.5:7b-instruct-q4_K_M",
+    "output_dir": "./output_docx",
+    "last_mode": 1,
 }
 
 
@@ -25,9 +27,17 @@ def load_config(config_path: Path) -> dict[str, Any]:
 
 
 def merge_overrides(config: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-    """Merge CLI overrides onto config values."""
+    """Return a new config dict with non-None overrides applied."""
     merged = config.copy()
     for key, value in overrides.items():
         if value is not None:
             merged[key] = value
     return merged
+
+
+def save_config(config_path: Path, config: dict[str, Any]) -> None:
+    """Persist config to JSON (writes a new file, never mutates in-place)."""
+    config_path.write_text(
+        json.dumps(config, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )

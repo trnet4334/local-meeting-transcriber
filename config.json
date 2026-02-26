@@ -2,5 +2,7 @@
   "ffmpeg_path": "ffmpeg",
   "whisper_cpp_path": "./whisper.cpp/main",
   "whisper_model_path": "./models/ggml-large-v3-q5_0.bin",
-  "ollama_model": "qwen2.5:7b-instruct-q4_K_M"
+  "ollama_model": "qwen2.5:7b-instruct-q4_K_M",
+  "output_dir": "/Users/stevy/Documents/Git/LocalMeetingTranscriber/output_docx",
+  "last_mode": 1
 }

@@ -2,34 +2,35 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from localmeetingtranscriber.config import load_config, merge_overrides
-from localmeetingtranscriber.converter import convert_to_wav
-from localmeetingtranscriber.exporter import build_output_path, export_docx
-from localmeetingtranscriber.llm_polisher import polish_text
-from localmeetingtranscriber.postprocess import srt_to_lines, strip_timestamps
-from localmeetingtranscriber.transcriber import transcribe_to_srt
+from localmeetingtranscriber.pipeline import (
+    PROJECT_ROOT,
+    PipelineInput,
+    validate_dependencies,
+    run_pipeline,
+)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INPUT_DIR = PROJECT_ROOT / "input_audio"
 OUTPUT_DIR = PROJECT_ROOT / "output_docx"
 
 
 def parse_selection(raw: str, max_count: int) -> list[int]:
-    """Parse comma-separated 1-based indices into zero-based list."""
+    """Parse comma-separated 1-based indices into a sorted zero-based list."""
     indices: list[int] = []
     for part in raw.split(","):
         part = part.strip()
         if not part:
             continue
-        num = int(part)
+        try:
+            num = int(part)
+        except ValueError:
+            raise ValueError(f"Invalid selection '{part}': expected a number")
         if num < 1 or num > max_count:
-            raise ValueError("Selection out of range")
+            raise ValueError(f"Selection {num} out of range (1–{max_count})")
         indices.append(num - 1)
     return sorted(set(indices))
 
@@ -61,7 +62,7 @@ def prompt_mode() -> int:
 
 
 def prompt_title_date(file_path: Path) -> tuple[str, str]:
-    """Prompt for meeting title and date with defaults."""
+    """Prompt for meeting title and date with sensible defaults."""
     default_title = file_path.stem
     default_date = datetime.fromtimestamp(file_path.stat().st_mtime).strftime(
         "%Y-%m-%d"
@@ -71,122 +72,25 @@ def prompt_title_date(file_path: Path) -> tuple[str, str]:
     return title, date
 
 
-def check_command_exists(cmd: str) -> bool:
-    """Check if a command exists on PATH."""
-    return shutil.which(cmd) is not None
-
-
-def resolve_file_path(path_str: str) -> Path:
-    """Resolve a file path, treating relative paths as project-root relative."""
-    path = Path(path_str).expanduser()
-    if not path.is_absolute():
-        path = (PROJECT_ROOT / path).resolve()
-    return path
-
-
-def resolve_optional_exe(path_str: str) -> str:
-    """Resolve an executable path if it looks like a file path."""
-    path = Path(path_str)
-    if path.name != path_str:
-        return str(resolve_file_path(path_str))
-    return path_str
-
-
-def validate_dependencies(config: dict, mode: int) -> None:
-    """Validate required dependencies and raise RuntimeError if missing."""
-    ffmpeg_path = config["ffmpeg_path"]
-    whisper_cpp_path = resolve_file_path(config["whisper_cpp_path"])
-    whisper_model_path = resolve_file_path(config["whisper_model_path"])
-
-    if Path(ffmpeg_path).name == ffmpeg_path and not check_command_exists(ffmpeg_path):
-        raise RuntimeError("ffmpeg not found. Install ffmpeg or update config.")
-
-    if not whisper_cpp_path.exists():
-        raise RuntimeError("whisper.cpp binary not found. Update config path.")
-
-    if not whisper_model_path.exists():
-        raise RuntimeError("whisper.cpp model not found. Update config path.")
-
-    if mode_requires_ollama(mode):
-        if not check_command_exists("ollama"):
-            raise RuntimeError("Ollama not found. Install Ollama for polishing.")
-
-
-def read_srt(srt_path: Path) -> str:
-    """Read SRT file content."""
-    return srt_path.read_text(encoding="utf-8")
-
-
-def polish_with_ollama(model: str, text: str) -> str:
-    """Polish text with a local LLM."""
-    prompt = (
-        "You are a professional meeting assistant. "
-        "Polish the transcript for clarity, remove filler words, "
-        "fix punctuation, and keep meaning. Preserve Chinese text.\n\n"
-        f"Transcript:\n{text}\n"
-    )
-    return polish_text(model, prompt)
-
-
 def process_file(file_path: Path, config: dict, mode: int) -> None:
-    """Process a single audio file through the pipeline."""
+    """Prompt for metadata then run the pipeline for a single audio file."""
     print(f"\nProcessing: {file_path.name}")
     title, date = prompt_title_date(file_path)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        wav_path = tmp_path / f"{file_path.stem}.wav"
-        output_base = tmp_path / file_path.stem
-
-        print("- Converting to WAV...")
-        convert_to_wav(resolve_optional_exe(config["ffmpeg_path"]), file_path, wav_path)
-
-        print("- Transcribing with whisper.cpp...")
-        srt_path = transcribe_to_srt(
-            str(resolve_file_path(config["whisper_cpp_path"])),
-            resolve_file_path(config["whisper_model_path"]),
-            wav_path,
-            output_base,
-        )
-
-        print("- Post-processing transcript...")
-        srt_text = read_srt(srt_path)
-        raw_lines = srt_to_lines(srt_text)
-        raw_txt_path = tmp_path / f"{file_path.stem}.txt"
-        raw_txt_path.write_text("\n".join(raw_lines), encoding="utf-8")
-        clean_lines = strip_timestamps(raw_lines)
-
-        if mode == 1:
-            final_lines = raw_lines
-            appendix = None
-        elif mode == 2:
-            final_lines = clean_lines
-            appendix = None
-        elif mode == 3:
-            print("- Polishing transcript with Ollama...")
-            polished = polish_with_ollama(
-                config["ollama_model"], "\n".join(clean_lines)
-            )
-            final_lines = polished.splitlines()
-            appendix = None
-        else:
-            print("- Polishing transcript with Ollama...")
-            polished = polish_with_ollama(
-                config["ollama_model"], "\n".join(clean_lines)
-            )
-            final_lines = polished.splitlines()
-            appendix = raw_lines
-
-        output_path = build_output_path(OUTPUT_DIR, title)
-        print(f"- Exporting DOCX to {output_path}...")
-        export_docx(output_path, title, date, final_lines, appendix=appendix)
-
-    print("- Done.")
+    pipeline_input = PipelineInput(
+        file_path=file_path,
+        title=title,
+        date=date,
+        mode=mode,
+        config=config,
+        output_dir=OUTPUT_DIR,
+    )
+    run_pipeline(pipeline_input, on_progress=lambda msg: print(f"- {msg}"))
 
 
 def select_files(files: list[Path]) -> list[Path]:
-    """Prompt user to select files by index."""
+    """Prompt user to select files from the list by index."""
     if not files:
         return []
 
