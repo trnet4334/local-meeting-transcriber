@@ -37,6 +37,7 @@ from localmeetingtranscriber.youtube import is_url
 from localmeetingtranscriber.gui.worker import PipelineWorker
 from localmeetingtranscriber.gui.yt_worker import UrlDownloadWorker
 from localmeetingtranscriber.gui.i18n import DEFAULT_LANGUAGE, LANGUAGES, TRANSLATIONS
+from localmeetingtranscriber.gui.help_dialog import HelpDialog
 
 _URL_DOWNLOAD_DIR = PROJECT_ROOT / "downloaded_audio"
 
@@ -82,6 +83,7 @@ class MainWindow(QMainWindow):
         """Update every UI string to the currently selected language."""
         self.setWindowTitle(self._tr("window_title"))
         self._lang_selector_label.setText(self._tr("lang_label"))
+        self._btn_help.setText(self._tr("btn_help"))
 
         # Group boxes
         self._grp_input.setTitle(self._tr("group_input"))
@@ -142,9 +144,13 @@ class MainWindow(QMainWindow):
             self._lang_combo.addItem(name, code)
         codes = list(LANGUAGES.keys())
         self._lang_combo.setCurrentIndex(codes.index(self._lang) if self._lang in codes else 0)
+        self._btn_help = QPushButton(self._tr("btn_help"))
+        self._btn_help.setFixedWidth(90)
         lang_bar.addStretch()
         lang_bar.addWidget(self._lang_selector_label)
         lang_bar.addWidget(self._lang_combo)
+        lang_bar.addSpacing(12)
+        lang_bar.addWidget(self._btn_help)
         wrapper_layout.addWidget(lang_bar_widget)
 
         # ── Scrollable content ─────────────────────────────────────────
@@ -360,6 +366,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _connect_signals(self) -> None:
+        self._btn_help.clicked.connect(lambda: HelpDialog(self).exec())
         self._btn_add.clicked.connect(self._on_add_files_clicked)
         self._btn_add_url.clicked.connect(self._on_add_url_clicked)
         self._btn_remove.clicked.connect(self._on_remove_selected)

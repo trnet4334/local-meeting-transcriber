@@ -62,6 +62,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "dlg_select_whisper_model": "Select whisper.cpp Model (.bin)",
         "dlg_model_filter": "Model Files (*.bin);;All Files (*)",
         "dlg_audio_filter": "Audio Files (*.m4a)",
+        # Help
+        "btn_help": "Help",
         # URL download
         "btn_add_url": "Add URL…",
         "dlg_url_title": "Add Video URL",
@@ -176,6 +178,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "dlg_select_whisper_model": "選取 whisper.cpp 模型（.bin）",
         "dlg_model_filter": "模型檔案 (*.bin);;所有檔案 (*)",
         "dlg_audio_filter": "Audio Files (*.m4a)",
+        # Help
+        "btn_help": "使用說明",
         # URL download
         "btn_add_url": "新增網址…",
         "dlg_url_title": "新增影片網址",
