@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from localmeetingtranscriber.pipeline import PROJECT_ROOT
 from localmeetingtranscriber.gui.downloader import ModelDownloader
 from localmeetingtranscriber.gui.i18n import DEFAULT_LANGUAGE, TRANSLATIONS
+from localmeetingtranscriber.transcriber import detect_whisper_type
 
 # ---------------------------------------------------------------------------
 # Whisper model catalogue
@@ -112,7 +113,10 @@ class _WhisperBinaryPage(QWizardPage):
 
     def isComplete(self) -> bool:
         path = self._path_edit.text().strip()
-        return bool(path) and Path(path).is_file()
+        if not path or not Path(path).is_file():
+            return False
+        # Block openai-whisper — this app requires whisper.cpp
+        return detect_whisper_type(path) != "openai-whisper"
 
     def _on_path_changed(self, text: str) -> None:
         stripped = text.strip()
@@ -130,12 +134,30 @@ class _WhisperBinaryPage(QWizardPage):
             self._path_edit.setText(path)
 
     def _refresh_status(self, path: str) -> None:
-        if path and Path(path).is_file():
-            self._status_label.setText(self._tr("wizard_binary_status_ok"))
-            self._status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-        else:
+        path = path.strip()
+        if not path or not Path(path).is_file():
             self._status_label.setText(self._tr("wizard_binary_status_missing"))
             self._status_label.setStyleSheet("color: #c0392b;")
+            return
+
+        backend = detect_whisper_type(path)
+        if backend == "openai-whisper":
+            self._status_label.setText(
+                "✗  This is the openai-whisper Python package — whisper.cpp is required.\n"
+                "   Install from: https://github.com/ggerganov/whisper.cpp"
+            )
+            self._status_label.setStyleSheet("color: #c0392b;")
+        elif backend == "whisper.cpp":
+            self._status_label.setText(
+                f"{self._tr('wizard_binary_status_ok')}  (whisper.cpp)"
+            )
+            self._status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        else:
+            # Unknown but file exists — allow through with a caution note
+            self._status_label.setText(
+                f"{self._tr('wizard_binary_status_ok')}  ⚠ type could not be verified"
+            )
+            self._status_label.setStyleSheet("color: #e67e22; font-weight: bold;")
 
 
 # ---------------------------------------------------------------------------
