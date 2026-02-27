@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -32,8 +33,13 @@ from localmeetingtranscriber.pipeline import (
     PipelineInput,
     validate_dependencies,
 )
+from localmeetingtranscriber.youtube import is_url
 from localmeetingtranscriber.gui.worker import PipelineWorker
+from localmeetingtranscriber.gui.yt_worker import UrlDownloadWorker
 from localmeetingtranscriber.gui.i18n import DEFAULT_LANGUAGE, LANGUAGES, TRANSLATIONS
+from localmeetingtranscriber.gui.help_dialog import HelpDialog
+
+_URL_DOWNLOAD_DIR = PROJECT_ROOT / "downloaded_audio"
 
 _CONFIG_PATH = PROJECT_ROOT / "config.json"
 
@@ -45,6 +51,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._config = load_config(_CONFIG_PATH)
         self._worker: PipelineWorker | None = None
+        self._yt_worker: UrlDownloadWorker | None = None
         self._lang = self._config.get("language", DEFAULT_LANGUAGE)
         if self._lang not in TRANSLATIONS:
             self._lang = DEFAULT_LANGUAGE
@@ -76,6 +83,7 @@ class MainWindow(QMainWindow):
         """Update every UI string to the currently selected language."""
         self.setWindowTitle(self._tr("window_title"))
         self._lang_selector_label.setText(self._tr("lang_label"))
+        self._btn_help.setText(self._tr("btn_help"))
 
         # Group boxes
         self._grp_input.setTitle(self._tr("group_input"))
@@ -87,6 +95,7 @@ class MainWindow(QMainWindow):
 
         # Buttons
         self._btn_add.setText(self._tr("btn_add"))
+        self._btn_add_url.setText(self._tr("btn_add_url"))
         self._btn_remove.setText(self._tr("btn_remove"))
         self._btn_browse.setText(self._tr("btn_browse"))
         self._btn_browse_whisper_bin.setText(self._tr("btn_browse"))
@@ -135,9 +144,13 @@ class MainWindow(QMainWindow):
             self._lang_combo.addItem(name, code)
         codes = list(LANGUAGES.keys())
         self._lang_combo.setCurrentIndex(codes.index(self._lang) if self._lang in codes else 0)
+        self._btn_help = QPushButton(self._tr("btn_help"))
+        self._btn_help.setFixedWidth(90)
         lang_bar.addStretch()
         lang_bar.addWidget(self._lang_selector_label)
         lang_bar.addWidget(self._lang_combo)
+        lang_bar.addSpacing(12)
+        lang_bar.addWidget(self._btn_help)
         wrapper_layout.addWidget(lang_bar_widget)
 
         # ── Scrollable content ─────────────────────────────────────────
@@ -173,11 +186,23 @@ class MainWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         self._btn_add = QPushButton(self._tr("btn_add"))
+        self._btn_add_url = QPushButton(self._tr("btn_add_url"))
         self._btn_remove = QPushButton(self._tr("btn_remove"))
         btn_row.addWidget(self._btn_add)
+        btn_row.addWidget(self._btn_add_url)
         btn_row.addWidget(self._btn_remove)
         btn_row.addStretch()
         layout.addLayout(btn_row)
+
+        # Inline download progress (hidden until a URL download starts)
+        self._url_progress_bar = QProgressBar()
+        self._url_progress_bar.setRange(0, 100)
+        self._url_progress_bar.setVisible(False)
+        self._url_progress_label = QLabel()
+        self._url_progress_label.setVisible(False)
+        layout.addWidget(self._url_progress_label)
+        layout.addWidget(self._url_progress_bar)
+
         return self._grp_input
 
     @staticmethod
@@ -341,7 +366,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _connect_signals(self) -> None:
+        self._btn_help.clicked.connect(lambda: HelpDialog(self).exec())
         self._btn_add.clicked.connect(self._on_add_files_clicked)
+        self._btn_add_url.clicked.connect(self._on_add_url_clicked)
         self._btn_remove.clicked.connect(self._on_remove_selected)
         self._btn_browse.clicked.connect(self._on_browse_output)
         self._btn_browse_whisper_bin.clicked.connect(self._on_browse_whisper_bin)
@@ -364,7 +391,49 @@ class MainWindow(QMainWindow):
         if paths:
             self._add_files(paths)
 
-    def _add_files(self, paths: list[str]) -> None:
+    def _on_add_url_clicked(self) -> None:
+        url, ok = QInputDialog.getText(
+            self,
+            self._tr("dlg_url_title"),
+            self._tr("dlg_url_prompt"),
+        )
+        if not ok or not url.strip():
+            return
+        url = url.strip()
+        if not is_url(url):
+            QMessageBox.warning(self, self._tr("dlg_url_title"), self._tr("dlg_url_invalid"))
+            return
+
+        self._btn_add_url.setEnabled(False)
+        self._url_progress_label.setText(self._tr("dlg_url_downloading"))
+        self._url_progress_label.setVisible(True)
+        self._url_progress_bar.setValue(0)
+        self._url_progress_bar.setVisible(True)
+        self._log_area.append(f"[URL] {self._tr('log_url_downloading')}: {url}")
+
+        self._yt_worker = UrlDownloadWorker(url, _URL_DOWNLOAD_DIR)
+        self._yt_worker.progress.connect(self._on_url_progress)
+        self._yt_worker.finished.connect(self._on_url_finished)
+        self._yt_worker.error.connect(self._on_url_error)
+        self._yt_worker.start()
+
+    def _on_url_progress(self, pct: float) -> None:
+        self._url_progress_bar.setValue(int(pct * 100))
+
+    def _on_url_finished(self, audio_path: Path, title: str) -> None:
+        self._url_progress_bar.setVisible(False)
+        self._url_progress_label.setVisible(False)
+        self._btn_add_url.setEnabled(True)
+        self._log_area.append(f"[URL] {self._tr('log_url_done')}: {audio_path.name}")
+        self._add_files([str(audio_path)], suggested_title=title)
+
+    def _on_url_error(self, message: str) -> None:
+        self._url_progress_bar.setVisible(False)
+        self._url_progress_label.setVisible(False)
+        self._btn_add_url.setEnabled(True)
+        QMessageBox.critical(self, self._tr("dlg_url_error_title"), message)
+
+    def _add_files(self, paths: list[str], suggested_title: str = "") -> None:
         """Add files to the list and metadata table (skips duplicates)."""
         existing = {
             self._file_list.item(i).data(Qt.ItemDataRole.UserRole)
@@ -383,7 +452,8 @@ class MainWindow(QMainWindow):
             name_item = QTableWidgetItem(path.name)
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self._metadata_table.setItem(row, 0, name_item)
-            self._metadata_table.setItem(row, 1, QTableWidgetItem(path.stem))
+            display_title = suggested_title if suggested_title else path.stem
+            self._metadata_table.setItem(row, 1, QTableWidgetItem(display_title))
             try:
                 mdate = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
             except OSError:
@@ -560,6 +630,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def closeEvent(self, event) -> None:
+        if self._yt_worker and self._yt_worker.isRunning():
+            self._yt_worker.terminate()
+            self._yt_worker.wait(3000)
         if self._worker and self._worker.isRunning():
             self._worker.cancel()
             self._worker.wait(3000)

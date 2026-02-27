@@ -62,6 +62,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "dlg_select_whisper_model": "Select whisper.cpp Model (.bin)",
         "dlg_model_filter": "Model Files (*.bin);;All Files (*)",
         "dlg_audio_filter": "Audio Files (*.m4a)",
+        # Help
+        "btn_help": "Help",
+        # URL download
+        "btn_add_url": "Add URL…",
+        "dlg_url_title": "Add Video URL",
+        "dlg_url_prompt": "Enter a YouTube, Vimeo, or direct video URL:",
+        "dlg_url_invalid": "Please enter a valid http(s) URL.",
+        "dlg_url_downloading": "Downloading audio…",
+        "dlg_url_error_title": "Download Error",
+        "log_url_downloading": "Downloading audio from URL",
+        "log_url_done": "Download complete",
         # Log messages
         "log_processing": "Processing",
         "log_cancel": "Cancellation requested",
@@ -167,6 +178,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "dlg_select_whisper_model": "選取 whisper.cpp 模型（.bin）",
         "dlg_model_filter": "模型檔案 (*.bin);;所有檔案 (*)",
         "dlg_audio_filter": "Audio Files (*.m4a)",
+        # Help
+        "btn_help": "使用說明",
+        # URL download
+        "btn_add_url": "新增網址…",
+        "dlg_url_title": "新增影片網址",
+        "dlg_url_prompt": "輸入 YouTube、Vimeo 或直接影片網址：",
+        "dlg_url_invalid": "請輸入有效的 http(s) 網址。",
+        "dlg_url_downloading": "正在下載音訊…",
+        "dlg_url_error_title": "下載錯誤",
+        "log_url_downloading": "正在從網址下載音訊",
+        "log_url_done": "下載完成",
         # Log messages
         "log_processing": "處理中",
         "log_cancel": "已請求取消",

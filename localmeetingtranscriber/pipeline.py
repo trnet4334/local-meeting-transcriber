@@ -182,7 +182,7 @@ def run_pipeline(
                 inp.config["ollama_model"],
                 _build_polish_prompt(clean_lines),
             )
-            final_lines = polished.splitlines()
+            final_lines = _to_traditional(polished).splitlines()
             appendix = None
         else:  # mode == 4
             _emit("Polishing transcript with Ollama...")
@@ -190,7 +190,7 @@ def run_pipeline(
                 inp.config["ollama_model"],
                 _build_polish_prompt(clean_lines),
             )
-            final_lines = polished.splitlines()
+            final_lines = _to_traditional(polished).splitlines()
             appendix = raw_lines
 
         output_path = build_output_path(inp.output_dir, inp.title)
